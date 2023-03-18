@@ -88,7 +88,7 @@ func cliAction(c *cli.Context) error {
 		return err
 	}
 	if len(ips) == 0 {
-		return fmt.Errorf(`nslokkup returns empty list of IPs for host "%s"`, host)
+		return fmt.Errorf(`nslookup returns empty list of IPs for host "%s"`, host)
 	}
 	portsList, err := getPortsList(c.String(portFlag.Name))
 	if err != nil {

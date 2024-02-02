@@ -1,51 +1,60 @@
 package main
 
 import (
+	"context"
 	"sync"
 )
 
-type Job func()
+type Job func(ctx context.Context) error
 
 type JobsExecutor interface {
-	Start()
 	Submit(job Job)
-	Wait()
+	Shutdown()
 }
 
 type jobsExecutor struct {
-	jobsChan    chan Job
-	parallelism int
-	wg          *sync.WaitGroup
+	ctx      context.Context
+	cancel   func()
+	jobsChan chan Job
+	wg       *sync.WaitGroup
 }
 
-func NewJobsExecutor(jobs int, parallelism int) JobsExecutor {
+func NewJobsExecutor(ctx context.Context, jobs int, parallelism int) JobsExecutor {
+	ctx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
-	return &jobsExecutor{
-		jobsChan:    make(chan Job, jobs),
-		parallelism: parallelism,
-		wg:          &wg,
+	je := &jobsExecutor{
+		ctx:      ctx,
+		cancel:   cancel,
+		jobsChan: make(chan Job, jobs),
+		wg:       &wg,
+	}
+	je.start(parallelism)
+	return je
+}
+
+func (je *jobsExecutor) start(parallelism int) {
+	je.wg.Add(parallelism)
+	for i := 0; i < parallelism; i++ {
+		go func() {
+			defer je.wg.Done()
+			for {
+				select {
+				case job := <-je.jobsChan:
+					_ = job(je.ctx)
+				case <-je.ctx.Done():
+					return
+				}
+			}
+		}()
 	}
 }
 
-func (je jobsExecutor) Start() {
-	for i := 0; i < je.parallelism; i++ {
-		go je.worker()
-	}
-}
-
-func (je jobsExecutor) Submit(job Job) {
-	je.wg.Add(1)
+func (je *jobsExecutor) Submit(job Job) {
 	je.jobsChan <- job
 }
 
-func (je jobsExecutor) worker() {
-	for job := range je.jobsChan {
-		job()
-		je.wg.Done()
-	}
-}
-
-func (je jobsExecutor) Wait() {
-	close(je.jobsChan)
+func (je *jobsExecutor) Shutdown() {
+	defer close(je.jobsChan)
+	je.cancel()
 	je.wg.Wait()
 }

@@ -1,17 +1,21 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/urfave/cli/v2"
 	"log"
 	"os"
+	"os/signal"
 	"runtime"
+	"strings"
+	"syscall"
 	"time"
 )
 
 var (
 	AppVersion = "development"
-	hostFlag   = cli.StringFlag{
+	hostFlag   = cli.StringSliceFlag{
 		Name:       "host",
 		Required:   true,
 		HasBeenSet: true,
@@ -72,7 +76,11 @@ func main() {
 		},
 		Action: cliAction,
 	}
-	if err := cliApp.Run(os.Args); err != nil {
+
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGKILL)
+	defer cancel()
+
+	if err := cliApp.RunContext(ctx, os.Args); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -80,37 +88,44 @@ func main() {
 func cliAction(c *cli.Context) error {
 
 	debug := c.Bool(debugFlag.Name)
-	host := c.String(hostFlag.Name)
 	tcpTimeout := time.Duration(c.Int(timeoutFlag.Name)) * time.Millisecond
 	concurrency := c.Int(parallelismFlag.Name)
-	ips, err := nslookup(host)
-	if err != nil {
-		return err
+	hosts := c.StringSlice(hostFlag.Name)
+
+	var allIPs []string
+	for _, host := range hosts {
+		ips, err := nslookup(host)
+		if err != nil {
+			return err
+		}
+		allIPs = append(allIPs, ips...)
 	}
-	if len(ips) == 0 {
-		return fmt.Errorf(`nslookup returns empty list of IPs for host "%s"`, host)
+
+	if len(allIPs) == 0 {
+		return fmt.Errorf(`nslookup returns empty list of IPs for hosts "%s"`, strings.Join(hosts, ", "))
 	}
+
 	portsList, err := getPortsList(c.String(portFlag.Name))
 	if err != nil {
 		return err
 	}
 
-	jobsCount := len(ips) * len(portsList)
-	executor := NewJobsExecutor(jobsCount, concurrency)
-	executor.Start()
+	jobsCount := len(allIPs) * len(portsList)
+	executor := NewJobsExecutor(c.Context, jobsCount, concurrency)
+	defer executor.Shutdown()
 
-	for _, ip := range ips {
+	for _, ip := range allIPs {
 		for _, port := range portsList {
-			executor.Submit(scanner{
+			s := scanner{
 				ip:      ip,
 				port:    port,
 				timeout: tcpTimeout,
 				debug:   debug,
-			}.scan)
+			}
+			executor.Submit(s.scan)
 		}
 	}
 
-	executor.Wait()
 	fmt.Println(`part scan is finished`)
 	return nil
 }

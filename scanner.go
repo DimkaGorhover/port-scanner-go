@@ -1,9 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
-	"os"
 	"strings"
 	"time"
 )
@@ -15,7 +15,7 @@ type scanner struct {
 	debug   bool
 }
 
-func (s scanner) scan() {
+func (s *scanner) scan(ctx context.Context) error {
 	d := net.Dialer{Timeout: s.timeout}
 	address := fmt.Sprintf(`%s:%d`, s.ip, s.port)
 	if s.debug {
@@ -25,7 +25,7 @@ func (s scanner) scan() {
 	if err != nil {
 		if addrError, ok := err.(*net.AddrError); ok {
 			if addrError.Timeout() {
-				return
+				return nil
 			}
 		} else if opError, ok := err.(*net.OpError); ok {
 
@@ -41,19 +41,20 @@ func (s scanner) scan() {
 				if errAe != nil {
 					if addErr, ok := err.(*net.AddrError); ok {
 						if addErr.Timeout() {
-							return
+							return nil
 						}
 					}
 				}
 			}
 
 		} else {
-			fmt.Println(err.Error())
-			os.Exit(1)
+			return err
 		}
 
-		return
+		return nil
 	}
 
 	fmt.Printf("[+] Port %15s %5d/TCP is open\n", s.ip, s.port)
+
+	return nil
 }

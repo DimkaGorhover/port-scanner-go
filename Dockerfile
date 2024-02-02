@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4-labs
 
-ARG GOLANG_VERSION="1.20"
+ARG GOLANG_VERSION="1.21"
 ARG BUILD_IMAGE="golang:${GOLANG_VERSION}-alpine"
 ARG GOLANGCI_LINT_IMAGE="golangci/golangci-lint:latest-alpine"
 ARG RELEASE_IMAGE="scratch"

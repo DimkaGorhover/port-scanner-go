@@ -126,6 +126,5 @@ func cliAction(c *cli.Context) error {
 		}
 	}
 
-	fmt.Println(`part scan is finished`)
 	return nil
 }

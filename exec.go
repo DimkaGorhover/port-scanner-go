@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"runtime/pprof"
+	"strconv"
 	"sync"
 )
 
@@ -33,20 +35,30 @@ func NewJobsExecutor(ctx context.Context, jobs int, parallelism int) JobsExecuto
 }
 
 func (je *jobsExecutor) start(parallelism int) {
-	je.wg.Add(parallelism)
 	for i := 0; i < parallelism; i++ {
-		go func() {
-			defer je.wg.Done()
-			for {
-				select {
-				case job := <-je.jobsChan:
-					_ = job(je.ctx)
-				case <-je.ctx.Done():
+		labels := pprof.Labels(`worker`, strconv.Itoa(i))
+		pprof.Do(je.ctx, labels, func(ctx context.Context) {
+			je.runWorker(ctx)
+		})
+	}
+}
+
+func (je *jobsExecutor) runWorker(ctx context.Context) {
+	je.wg.Add(1)
+	go func() {
+		defer je.wg.Done()
+		for {
+			select {
+			case job, ok := <-je.jobsChan:
+				if !ok {
 					return
 				}
+				_ = job(ctx)
+			case <-ctx.Done():
+				return
 			}
-		}()
-	}
+		}
+	}()
 }
 
 func (je *jobsExecutor) Submit(job Job) {
@@ -54,7 +66,7 @@ func (je *jobsExecutor) Submit(job Job) {
 }
 
 func (je *jobsExecutor) Shutdown() {
-	defer close(je.jobsChan)
-	je.cancel()
+	defer je.cancel()
+	close(je.jobsChan)
 	je.wg.Wait()
 }

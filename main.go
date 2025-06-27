@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/urfave/cli/v2"
 	"log"
 	"os"
 	"os/signal"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/urfave/cli/v2"
 )
 
 var (
